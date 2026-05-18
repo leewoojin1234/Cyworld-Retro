@@ -1,16 +1,22 @@
 package kr.hs.dgsw.cyworldretro.domain.member;
 
 import kr.hs.dgsw.cyworldretro.domain.member.dto.MemberJoinRequest;
+import kr.hs.dgsw.cyworldretro.domain.member.dto.MemberInfoResponse;
 import kr.hs.dgsw.cyworldretro.domain.member.dto.MemberLoginRequest;
+import kr.hs.dgsw.cyworldretro.domain.member.dto.ReissueTokenRequest;
 import kr.hs.dgsw.cyworldretro.domain.member.dto.TokenResponse;
 import kr.hs.dgsw.cyworldretro.domain.minihome.MiniHome;
 import kr.hs.dgsw.cyworldretro.domain.minihome.MiniHomeRepository;
+import kr.hs.dgsw.cyworldretro.global.exception.BusinessException;
 import kr.hs.dgsw.cyworldretro.global.security.JwtTokenProvider;
 import kr.hs.dgsw.cyworldretro.global.security.RefreshTokenService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -26,7 +32,7 @@ public class MemberService {
     @Transactional
     public void join(MemberJoinRequest request) {
         if (memberRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("이미 존재하는 이메일입니다.");
+            throw new BusinessException(HttpStatus.CONFLICT, "이미 존재하는 이메일입니다.");
         }
 
         Member member = Member.builder()
@@ -44,22 +50,56 @@ public class MemberService {
         miniHomeRepository.save(miniHome);
     }
 
+    @Transactional
     public TokenResponse login(MemberLoginRequest request) {
         Member member = memberRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다."));
 
         if (!passwordEncoder.matches(request.getPassword(), member.getPassword())) {
-            throw new RuntimeException("비밀번호가 일치하지 않습니다.");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다.");
         }
 
-        String accessToken = jwtTokenProvider.createAccessToken(member.getEmail());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getEmail());
+        TokenResponse response = issueTokens(member.getEmail());
+        refreshTokenService.saveRefreshToken(member.getEmail(), response.getRefreshToken());
 
-        refreshTokenService.saveRefreshToken(member.getEmail(), refreshToken);
+        return response;
+    }
 
+    public TokenResponse reissue(ReissueTokenRequest request) {
+        String refreshToken = request.getRefreshToken();
+
+        if (!jwtTokenProvider.validateToken(refreshToken)) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token입니다.");
+        }
+
+        String email = jwtTokenProvider.getEmail(refreshToken);
+        String savedRefreshToken = refreshTokenService.getRefreshToken(email);
+
+        if (!Objects.equals(savedRefreshToken, refreshToken)) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "Refresh Token이 일치하지 않습니다.");
+        }
+
+        TokenResponse response = issueTokens(email);
+        refreshTokenService.saveRefreshToken(email, response.getRefreshToken());
+
+        return response;
+    }
+
+    public void logout(String email) {
+        refreshTokenService.deleteRefreshToken(email);
+    }
+
+    public MemberInfoResponse getMyInfo(String email) {
+        Member member = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+
+        return MemberInfoResponse.from(member);
+    }
+
+    private TokenResponse issueTokens(String email) {
         return TokenResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
+                .accessToken(jwtTokenProvider.createAccessToken(email))
+                .refreshToken(jwtTokenProvider.createRefreshToken(email))
                 .build();
     }
 }
