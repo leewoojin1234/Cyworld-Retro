@@ -30,7 +30,8 @@ public class GuestBook extends BaseTimeEntity {
 
     private boolean isSecret;
 
-    public void updateContent(String content) {
+    public void update(String content, boolean isSecret) {
         this.content = content;
+        this.isSecret = isSecret;
     }
 }

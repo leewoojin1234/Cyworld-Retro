@@ -50,4 +50,9 @@ public class MiniHome extends BaseTimeEntity {
         this.todayVisit = today;
         this.totalVisit = total;
     }
+
+    public void increaseVisit() {
+        this.todayVisit++;
+        this.totalVisit++;
+    }
 }

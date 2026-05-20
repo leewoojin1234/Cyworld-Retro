@@ -1,8 +1,10 @@
 package kr.hs.dgsw.cyworldretro.domain.member;
 
 import jakarta.persistence.*;
+import kr.hs.dgsw.cyworldretro.global.exception.BusinessException;
 import kr.hs.dgsw.cyworldretro.global.entity.BaseTimeEntity;
 import lombok.*;
+import org.springframework.http.HttpStatus;
 
 @Entity
 @Getter
@@ -33,7 +35,7 @@ public class Member extends BaseTimeEntity {
 
     public void useAcorn(int amount) {
         if (this.acorn < amount) {
-            throw new RuntimeException("도토리가 부족합니다.");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "도토리가 부족합니다.");
         }
         this.acorn -= amount;
     }
